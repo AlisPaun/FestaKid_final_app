@@ -1,0 +1,7 @@
+{
+  "name": "FestaKid: Festeggiamo Insieme",
+  "description": "App completa per gestire compleanni dei bambini: RSVP, liste regali, inviti AI e mappe.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

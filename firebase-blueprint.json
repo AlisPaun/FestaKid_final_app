@@ -1,0 +1,86 @@
+{
+  "entities": {
+    "Party": {
+      "title": "Party",
+      "description": "A birthday party event",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "date": { "type": "object" },
+        "location": {
+          "type": "object",
+          "properties": {
+            "address": { "type": "string" },
+            "lat": { "type": "number" },
+            "lng": { "type": "number" },
+            "placeId": { "type": "string" }
+          }
+        },
+        "description": { "type": "string" },
+        "hostId": { "type": "string" },
+        "theme": { "type": "string" },
+        "customThemeConfig": {
+          "type": "object",
+          "properties": {
+            "backgroundColor": { "type": "string" },
+            "textColor": { "type": "string" },
+            "backgroundImageUrl": { "type": "string" },
+            "backgroundPattern": { "type": "string" }
+          }
+        },
+        "invitationText": { "type": "string" },
+        "invitationImageUrl": { "type": "string" },
+        "photoUrls": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "object" },
+        "language": { "type": "string" }
+      },
+      "required": ["id", "title", "hostId"]
+    },
+    "Guest": {
+      "title": "Guest",
+      "description": "A guest invited to a party",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "partyId": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "attending", "declined"] },
+        "plusOnes": { "type": "number" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "partyId", "name", "status"]
+    },
+    "Gift": {
+      "title": "Gift",
+      "description": "A gift idea for the party",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "partyId": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "url": { "type": "string" },
+        "claimedBy": { "type": "string" },
+        "claimedByName": { "type": "string" }
+      },
+      "required": ["id", "partyId", "name"]
+    }
+  },
+  "firestore": {
+    "/parties/{partyId}": {
+      "schema": { "$ref": "#/entities/Party" },
+      "description": "Parties collection"
+    },
+    "/parties/{partyId}/guests/{guestId}": {
+      "schema": { "$ref": "#/entities/Guest" },
+      "description": "Guests for a party"
+    },
+    "/parties/{partyId}/gifts/{giftId}": {
+      "schema": { "$ref": "#/entities/Gift" },
+      "description": "Gifts for a party"
+    }
+  }
+}

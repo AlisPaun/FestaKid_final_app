@@ -1,0 +1,128 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (request.auth.token.email == "alis.paun@gmail.com" && request.auth.token.email_verified == true);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.size() <= 254;
+    }
+
+    function isValidUrl(url) {
+      return url is string && url.size() <= 2048;
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidParty(data) {
+      return data.id is string && data.id.size() > 0 && data.id.size() <= 100 &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 100 &&
+             data.hostId is string && data.hostId.size() > 0 && data.hostId.size() <= 100;
+    }
+
+    function isValidGuest(data) {
+      return data.id is string && data.id.size() > 0 && data.id.size() <= 100 &&
+             data.partyId is string && data.partyId.size() > 0 && data.partyId.size() <= 100 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.status in ['pending', 'attending', 'declined'];
+    }
+
+    function isValidGift(data) {
+      return data.id is string && data.id.size() > 0 && data.id.size() <= 100 &&
+             data.partyId is string && data.partyId.size() > 0 && data.partyId.size() <= 100 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100;
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && request.resource.data.role == 'user';
+      allow update: if (isOwner(userId) && request.resource.data.role == resource.data.role) || isAdmin();
+    }
+
+    match /parties/{partyId} {
+      allow get: if true;
+      allow list: if isAuthenticated();
+      
+      allow create: if isAuthenticated() && 
+                    request.resource.data.hostId == request.auth.uid &&
+                    isValidParty(request.resource.data);
+                    
+      allow update: if (isOwner(resource.data.hostId) || isAdmin()) &&
+                    request.resource.data.hostId == resource.data.hostId &&
+                    request.resource.data.id == resource.data.id &&
+                    isValidParty(request.resource.data);
+                    
+      allow delete: if isOwner(resource.data.hostId) || isAdmin();
+
+      match /guests/{guestId} {
+        allow get: if true;
+        allow list: if isAuthenticated();
+        
+        allow create: if isAuthenticated() && 
+                      (get(/databases/$(database)/documents/parties/$(partyId)).data.hostId == request.auth.uid ||
+                       request.resource.data.userId == request.auth.uid) &&
+                      isValidGuest(request.resource.data);
+                      
+        allow update: if isAuthenticated() && 
+                      (get(/databases/$(database)/documents/parties/$(partyId)).data.hostId == request.auth.uid ||
+                       (resource.data.userId == request.auth.uid && 
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'plusOnes', 'name', 'phone', 'email']))) &&
+                      request.resource.data.partyId == resource.data.partyId &&
+                      request.resource.data.id == resource.data.id &&
+                      isValidGuest(request.resource.data);
+                      
+        allow delete: if isAuthenticated() && 
+                      (get(/databases/$(database)/documents/parties/$(partyId)).data.hostId == request.auth.uid ||
+                       resource.data.userId == request.auth.uid || isAdmin());
+      }
+
+      match /gifts/{giftId} {
+        allow get: if true;
+        allow list: if isAuthenticated();
+        
+        allow create: if isAuthenticated() && 
+                      get(/databases/$(database)/documents/parties/$(partyId)).data.hostId == request.auth.uid &&
+                      isValidGift(request.resource.data);
+                      
+        allow update: if isAuthenticated() && 
+                      (get(/databases/$(database)/documents/parties/$(partyId)).data.hostId == request.auth.uid ||
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claimedBy', 'claimedByName'])) &&
+                      request.resource.data.partyId == resource.data.partyId &&
+                      request.resource.data.id == resource.data.id &&
+                      isValidGift(request.resource.data);
+                      
+        allow delete: if isAuthenticated() && 
+                      (get(/databases/$(database)/documents/parties/$(partyId)).data.hostId == request.auth.uid || isAdmin());
+      }
+    }
+
+    match /feedback/{feedbackId} {
+      allow create: if true; // Allow anyone to submit feedback
+      allow read: if isAdmin(); // Only admins can read feedback
+    }
+    
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}
