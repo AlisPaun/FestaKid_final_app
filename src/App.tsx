@@ -48,10 +48,24 @@ const generateId = () => {
 
 const getPublicUrl = () => {
   const origin = window.location.origin;
+  
+  // Detect if we are in an AI Studio preview environment
+  const isAistudioPreview = 
+    origin.includes('ais-dev-') || 
+    origin.includes('ais-pre-') || 
+    origin.includes('stackblitz') ||
+    origin.includes('localhost') ||
+    origin.includes('0.0.0.0');
+
+  // If we are on a production run.app site that IS NOT a preview, use origin
+  if (!isAistudioPreview && origin.includes('.run.app')) {
+    return origin;
+  }
+
   const appUrl = process.env.VITE_APP_URL;
 
   // If we have a configured APP_URL and it's not the editor portal, use it
-  if (appUrl && !appUrl.includes('ai.studio/apps')) {
+  if (appUrl && !appUrl.includes('ai.studio/apps') && !appUrl.includes('ais-dev-')) {
     return appUrl.replace(/\/$/, '');
   }
 
@@ -60,13 +74,8 @@ const getPublicUrl = () => {
     return origin.replace('ais-dev-', 'ais-pre-');
   }
 
-  // Fallback to origin if it's already a clean run.app URL
-  if (origin.includes('.run.app')) {
-    return origin;
-  }
-
-  // Ultimate fallback (the shared URL for this specific project)
-  return 'https://ais-pre-33dwuj2r27zczlcv25rii4-778968707297.europe-west2.run.app';
+  // Fallback to origin if no APP_URL is set or if we are already on a public-looking URL
+  return origin;
 };
 
 const getThemeStyles = (theme?: string, customConfig?: any) => {

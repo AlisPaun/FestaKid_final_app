@@ -11,11 +11,20 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Import Firebase config
-const firebaseConfig = JSON.parse(fs.readFileSync(path.join(__dirname, 'firebase-applet-config.json'), 'utf-8'));
-
-// Initialize Firebase
-const firebaseApp = initializeApp(firebaseConfig);
-const db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+let db: any;
+try {
+  const configPath = path.join(__dirname, 'firebase-applet-config.json');
+  if (fs.existsSync(configPath)) {
+    const firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    // Initialize Firebase
+    const firebaseApp = initializeApp(firebaseConfig);
+    db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+  } else {
+    console.warn('Firebase config file missing');
+  }
+} catch (error) {
+  console.error('Failed to initialize Firebase on server:', error);
+}
 
 async function startServer() {
   const app = express();
@@ -66,17 +75,21 @@ async function startServer() {
       let image = "https://images.unsplash.com/photo-1530103043960-ef38714abb15?auto=format&fit=crop&w=1200&h=630&q=80";
 
       // If it's a party link, fetch details
-      if (partyId) {
-        const partyRef = doc(db, 'parties', partyId);
-        const partySnap = await getDoc(partyRef);
+      if (partyId && db) {
+        try {
+          const partyRef = doc(db, 'parties', partyId);
+          const partySnap = await getDoc(partyRef);
 
-        if (partySnap.exists()) {
-          const partyData = partySnap.data();
-          title = `${partyData.title} 🎂`;
-          description = partyData.description || 'Sei invitato alla festa! Clicca per vedere i dettagli e confermare la tua presenza.';
-          if (partyData.invitationImageUrl) {
-            image = partyData.invitationImageUrl;
+          if (partySnap.exists()) {
+            const partyData = partySnap.data();
+            title = `${partyData.title} 🎂`;
+            description = partyData.description || 'Sei invitato alla festa! Clicca per vedere i dettagli e confermare la tua presenza.';
+            if (partyData.invitationImageUrl) {
+              image = partyData.invitationImageUrl;
+            }
           }
+        } catch (dbError) {
+          console.error('Error fetching party for metadata:', dbError);
         }
       }
 
