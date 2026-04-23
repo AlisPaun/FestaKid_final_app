@@ -49,7 +49,7 @@ export function FeedbackDialog({ isOpen, onOpenChange }: Props) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <MessageSquare size={20} className="text-amber-600" />
-            {t('feedback')}
+            {t('feedbackQuestion')}
           </DialogTitle>
           <DialogDescription>
             {t('feedbackPlaceholder')}

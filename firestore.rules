@@ -1,128 +1,157 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // 0. Default Deny Catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
     // ===============================================================
-    // Helper Functions
+    // 3. Primitive Definition & Global Helpers
     // ===============================================================
     
-    function isAuthenticated() {
+    function isSignedIn() {
       return request.auth != null;
     }
 
     function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+      return isSignedIn() && request.auth.uid == userId;
     }
 
     function isAdmin() {
-      return isAuthenticated() &&
+      return isSignedIn() &&
         (request.auth.token.email == "alis.paun@gmail.com" && request.auth.token.email_verified == true);
     }
 
-    function isValidEmail(email) {
-      return email is string && email.size() <= 254;
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_-]+$'); 
     }
 
-    function isValidUrl(url) {
-      return url is string && url.size() <= 2048;
-    }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
 
     // ===============================================================
-    // Domain Validators
+    // 2. Validation Blueprints (The "Anti-Update-Gap")
     // ===============================================================
 
     function isValidParty(data) {
-      return data.id is string && data.id.size() > 0 && data.id.size() <= 100 &&
-             data.title is string && data.title.size() > 0 && data.title.size() <= 100 &&
-             data.hostId is string && data.hostId.size() > 0 && data.hostId.size() <= 100;
+      return data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             data.hostId is string && data.hostId.size() > 0 && data.hostId.size() <= 100 &&
+             (!('description' in data) || data.description == null || (data.description is string && data.description.size() <= 2000)) &&
+             (!('theme' in data) || data.theme == null || (data.theme is string && data.theme.size() <= 100)) &&
+             (!('invitationText' in data) || data.invitationText == null || (data.invitationText is string && data.invitationText.size() <= 5000)) &&
+             (!('invitationImageUrl' in data) || data.invitationImageUrl == null || (data.invitationImageUrl is string && data.invitationImageUrl.size() <= 1000)) &&
+             (!('photoUrls' in data) || (data.photoUrls is list && data.photoUrls.size() <= 100)) &&
+             (!('language' in data) || (data.language is string && data.language.size() <= 10)) &&
+             (!('createdAt' in data) || (data.createdAt is string || data.createdAt is timestamp)) &&
+             (!('date' in data) || (data.date is string || data.date is timestamp)) &&
+             (!('location' in data) || (data.location is map && data.location.address is string));
     }
 
     function isValidGuest(data) {
-      return data.id is string && data.id.size() > 0 && data.id.size() <= 100 &&
-             data.partyId is string && data.partyId.size() > 0 && data.partyId.size() <= 100 &&
+      return data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+             data.partyId is string && data.partyId.size() > 0 && data.partyId.size() <= 128 &&
              data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
-             data.status in ['pending', 'attending', 'declined'];
+             data.status in ['pending', 'attending', 'declined'] &&
+             (!('email' in data) || data.email == '' || (data.email is string && data.email.size() <= 254)) &&
+             (!('phone' in data) || data.phone == '' || (data.phone is string && data.phone.size() <= 50)) &&
+             (!('plusOnes' in data) || (data.plusOnes is int && data.plusOnes >= 0 && data.plusOnes <= 20));
     }
 
     function isValidGift(data) {
-      return data.id is string && data.id.size() > 0 && data.id.size() <= 100 &&
-             data.partyId is string && data.partyId.size() > 0 && data.partyId.size() <= 100 &&
-             data.name is string && data.name.size() > 0 && data.name.size() <= 100;
+      return data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+             data.partyId is string && data.partyId.size() > 0 && data.partyId.size() <= 128 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             (!('url' in data) || data.url == '' || (data.url is string && data.url.size() <= 2048)) &&
+             (!('claimedBy' in data) || (data.claimedBy is string)) &&
+             (!('claimedByName' in data) || (data.claimedByName is string));
     }
 
     // ===============================================================
-    // Collection Rules
+    // 1. The "Master Gate" (Relational Sync) & Collection Rules
     // ===============================================================
 
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
-      allow create: if isOwner(userId) && request.resource.data.role == 'user';
-      allow update: if (isOwner(userId) && request.resource.data.role == resource.data.role) || isAdmin();
+      allow create: if isOwner(userId) && (!('role' in incoming()) || incoming().role == 'user');
+      allow update: if (isOwner(userId) && (!('role' in incoming()) || incoming().role == resource.data.role)) || isAdmin();
     }
 
     match /parties/{partyId} {
-      allow get: if true;
-      allow list: if isAuthenticated();
+      allow get: if isValidId(partyId);
+      // 8. Secure List Queries (Enforce hostId check)
+      allow list: if isSignedIn() && (resource.data.hostId == request.auth.uid || isAdmin());
       
-      allow create: if isAuthenticated() && 
-                    request.resource.data.hostId == request.auth.uid &&
-                    isValidParty(request.resource.data);
+      allow create: if isSignedIn() && 
+                    isValidId(partyId) &&
+                    incoming().id == partyId &&
+                    incoming().hostId == request.auth.uid &&
+                    isValidParty(incoming());
                     
-      allow update: if (isOwner(resource.data.hostId) || isAdmin()) &&
-                    request.resource.data.hostId == resource.data.hostId &&
-                    request.resource.data.id == resource.data.id &&
-                    isValidParty(request.resource.data);
+      allow update: if isValidId(partyId) &&
+                    (isOwner(existing().hostId) || isAdmin()) &&
+                    incoming().hostId == existing().hostId &&
+                    incoming().id == existing().id &&
+                    isValidParty(incoming());
                     
-      allow delete: if isOwner(resource.data.hostId) || isAdmin();
+      allow delete: if isValidId(partyId) && (isOwner(existing().hostId) || isAdmin());
 
       match /guests/{guestId} {
-        allow get: if true;
-        allow list: if isAuthenticated();
+        allow get: if isValidId(guestId);
+        // Public list access for party members/guests
+        allow list: if true; 
         
-        allow create: if isAuthenticated() && 
-                      (get(/databases/$(database)/documents/parties/$(partyId)).data.hostId == request.auth.uid ||
-                       request.resource.data.userId == request.auth.uid) &&
-                      isValidGuest(request.resource.data);
+        allow create: if isValidId(guestId) && 
+                      incoming().id == guestId &&
+                      isValidGuest(incoming());
                       
-        allow update: if isAuthenticated() && 
-                      (get(/databases/$(database)/documents/parties/$(partyId)).data.hostId == request.auth.uid ||
-                       (resource.data.userId == request.auth.uid && 
-                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'plusOnes', 'name', 'phone', 'email']))) &&
-                      request.resource.data.partyId == resource.data.partyId &&
-                      request.resource.data.id == resource.data.id &&
-                      isValidGuest(request.resource.data);
+        allow update: if isValidId(guestId) &&
+                      isSignedIn() && (
+                        // Host can update anything
+                        (get(/databases/$(database)/documents/parties/$(partyId)).data.hostId == request.auth.uid) ||
+                        // Guest can update their own status (if they have their own userId on the doc)
+                        (existing().userId == request.auth.uid && 
+                         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'plusOnes', 'name', 'phone', 'email']))
+                      ) &&
+                      incoming().partyId == existing().partyId &&
+                      incoming().id == existing().id &&
+                      isValidGuest(incoming());
                       
-        allow delete: if isAuthenticated() && 
+        allow delete: if isValidId(guestId) && isSignedIn() && 
                       (get(/databases/$(database)/documents/parties/$(partyId)).data.hostId == request.auth.uid ||
-                       resource.data.userId == request.auth.uid || isAdmin());
+                       existing().userId == request.auth.uid || isAdmin());
       }
 
       match /gifts/{giftId} {
-        allow get: if true;
-        allow list: if isAuthenticated();
+        allow get: if isValidId(giftId);
+        allow list: if true;
         
-        allow create: if isAuthenticated() && 
+        allow create: if isValidId(giftId) &&
+                      incoming().id == giftId &&
+                      isSignedIn() && 
                       get(/databases/$(database)/documents/parties/$(partyId)).data.hostId == request.auth.uid &&
-                      isValidGift(request.resource.data);
+                      isValidGift(incoming());
                       
-        allow update: if isAuthenticated() && 
-                      (get(/databases/$(database)/documents/parties/$(partyId)).data.hostId == request.auth.uid ||
-                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claimedBy', 'claimedByName'])) &&
-                      request.resource.data.partyId == resource.data.partyId &&
-                      request.resource.data.id == resource.data.id &&
-                      isValidGift(request.resource.data);
+        allow update: if isValidId(giftId) &&
+                      isSignedIn() && (
+                        // Host update
+                        (get(/databases/$(database)/documents/parties/$(partyId)).data.hostId == request.auth.uid) ||
+                        // Claiming logic (can only update claimed fields)
+                        (incoming().diff(existing()).affectedKeys().hasOnly(['claimedBy', 'claimedByName']))
+                      ) &&
+                      incoming().partyId == existing().partyId &&
+                      incoming().id == existing().id &&
+                      isValidGift(incoming());
                       
-        allow delete: if isAuthenticated() && 
+        allow delete: if isValidId(giftId) && isSignedIn() && 
                       (get(/databases/$(database)/documents/parties/$(partyId)).data.hostId == request.auth.uid || isAdmin());
       }
     }
 
     match /feedback/{feedbackId} {
-      allow create: if true; // Allow anyone to submit feedback
-      allow read: if isAdmin(); // Only admins can read feedback
-    }
-    
-    match /{path=**} {
-      allow read, write: if false;
+      allow create: if true; 
+      allow read: if isAdmin();
     }
   }
 }

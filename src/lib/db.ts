@@ -53,9 +53,9 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
-export const subscribeToParties = (callback: (parties: Party[]) => void) => {
+export const subscribeToParties = (callback: (parties: Party[], metadata: { hasPendingWrites: boolean }) => void) => {
   if (!auth.currentUser) {
-    callback([]);
+    callback([], { hasPendingWrites: false });
     return () => {};
   }
   
@@ -63,7 +63,7 @@ export const subscribeToParties = (callback: (parties: Party[]) => void) => {
   
   return onSnapshot(q, (snapshot) => {
     const parties = snapshot.docs.map(doc => doc.data() as Party);
-    callback(parties);
+    callback(parties, { hasPendingWrites: snapshot.metadata.hasPendingWrites });
   }, (error) => {
     handleFirestoreError(error, OperationType.LIST, 'parties');
   });

@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -9,6 +10,8 @@
   
   --radius-xl: 1.5rem;
   --radius-2xl: 2rem;
+
+  --font-handwriting: "Caveat", cursive;
 }
 
 @layer base {
@@ -34,7 +37,7 @@
 }
 
 .birthday-card {
-  @apply bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 overflow-hidden transition-all hover:scale-[1.02] hover:shadow-2xl;
+  @apply bg-white/40 backdrop-blur-2xl rounded-[2rem] shadow-2xl border border-white/50 overflow-hidden transition-all duration-500 hover:bg-white/50;
 }
 
 .btn-primary {
